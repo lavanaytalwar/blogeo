@@ -1,0 +1,53 @@
+{
+  "name": "acme-blogeo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed-config.ts",
+    "gsc:sync": "tsx scripts/gsc-sync.ts",
+    "gsc:probe": "tsx scripts/gsc-probe.ts",
+    "sitemap:crawl": "tsx scripts/crawl-sitemap.ts",
+    "keywords:ingest": "tsx scripts/ingest-keywords.ts",
+    "typecheck": "tsc --noEmit",
+    "status": "tsx scripts/status.ts",
+    "test": "node --import tsx --test lib/gates/*.test.ts lib/keywords/*.test.ts lib/data/*.test.ts lib/brief/*.test.ts lib/draft/*.test.ts lib/gsc/*.test.ts lib/serp/*.test.ts lib/review/*.test.ts",
+    "gate": "tsx scripts/gate.ts",
+    "review": "tsx scripts/review-once.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "gsc:reclassify": "tsx scripts/reclassify.ts",
+    "linear:merchants": "tsx scripts/sync-merchants.ts",
+    "gsc:mine": "tsx scripts/gsc-mine.ts",
+    "keywords:secondaries": "tsx scripts/apply-secondaries.ts",
+    "serp:headings": "tsx scripts/serp-headings.ts",
+    "keywords:serp": "tsx scripts/apply-serp-secondaries.ts",
+    "keywords:apply-accepted": "tsx scripts/apply-accepted-keywords.ts",
+    "keywords:rejections": "tsx scripts/sync-rejections.ts",
+    "brief": "tsx scripts/brief.ts",
+    "draft": "tsx scripts/draft-once.ts",
+    "draft:batch": "tsx scripts/draft-batch.ts",
+    "serp:analyze": "tsx scripts/serp-analyze.ts"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "next": "^15.5.24",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "exceljs": "^4.4.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

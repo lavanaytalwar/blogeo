@@ -1,0 +1,66 @@
+.block { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 28px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.sub { font-size: 12.5px; color: var(--text-sec); line-height: 1.5; max-width: 62ch; }
+.button {
+  padding: 9px 16px; border-radius: var(--radius); background: transparent;
+  border: 1px solid var(--accent); color: var(--accent);
+  font-size: 13px; font-weight: 500; cursor: pointer; flex-shrink: 0;
+}
+.button:disabled { border-color: var(--border); color: var(--text-sec); cursor: default; }
+.result { font-size: 12.5px; color: var(--text-sec); line-height: 1.65; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.result strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.note { margin: 8px 0 0; }
+.list { margin: 8px 0 0; padding-left: 18px; }
+.list li { margin: 3px 0; }
+.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.error { font-size: 12.5px; color: var(--fail); background: var(--fail-wash); padding: 9px 11px; border-radius: var(--radius); margin-top: 12px; }
+
+.secondaryList { margin: 8px 0 0; padding-left: 14px; list-style: none; border-left: 2px solid var(--border); }
+.secondaryList li { font-size: 12.5px; color: var(--text-sec); margin: 4px 0; line-height: 1.4; }
+.evidence { font-family: var(--font-mono); font-size: 10.5px; color: var(--dormant); margin-left: 8px; white-space: nowrap; }
+
+/* A proposed secondary is awaiting a human decision, not a finding. It reads
+   differently on purpose. */
+.proposed { border-left: 2px solid var(--blocked); margin-left: -14px; padding-left: 12px; }
+.proposedTag {
+  font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--blocked); border: 1px solid currentColor;
+  border-radius: 3px; padding: 0 4px; margin-left: 6px;
+}
+
+/* The minus sign on every keyword. Quiet until it matters — a rejection is a
+   decision the eye should be able to find, but the default state is not a
+   thing you want twenty-eight of shouting on one screen. */
+.reject, .rejectOn {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1;
+  width: 16px; height: 16px; padding: 0; margin-right: 7px;
+  border-radius: 3px; cursor: pointer; flex-shrink: 0;
+  vertical-align: baseline; background: transparent;
+  border: 1px solid var(--border); color: var(--dormant);
+}
+.reject:hover { border-color: var(--fail); color: var(--fail); }
+.rejectOn { border-color: var(--fail); color: var(--fail); background: var(--fail-wash); }
+.reject:disabled, .rejectOn:disabled { cursor: default; opacity: 0.5; }
+
+/* The check mark beside it — same shape, opposite decision. */
+.accept, .acceptOn {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1;
+  width: 16px; height: 16px; padding: 0; margin-right: 4px;
+  border-radius: 3px; cursor: pointer; flex-shrink: 0;
+  vertical-align: baseline; background: transparent;
+  border: 1px solid var(--border); color: var(--dormant);
+}
+.accept:hover { border-color: var(--pass); color: var(--pass); }
+.acceptOn { border-color: var(--pass); color: var(--pass); background: var(--accent-wash); }
+.accept:disabled, .acceptOn:disabled { cursor: default; opacity: 0.5; }
+
+.keywordRow { display: inline-flex; align-items: baseline; }
+.struck { text-decoration: line-through; color: var(--dormant); }
+
+.rejectedBlock {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 18px; margin-bottom: 28px;
+}
+.rejectedList { margin: 10px 0 0; padding: 0; list-style: none; }
+.rejectedList li { font-size: 12.5px; margin: 4px 0; line-height: 1.5; }

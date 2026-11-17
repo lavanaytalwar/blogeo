@@ -1,0 +1,397 @@
+{
+  "_source": "Linear projects. Regenerate with npm run linear:merchants.",
+  "_rule": "Gate 3 refuses any merchant name where public is false. Set vertical_source to \"confirmed\" to stop a re-run overwriting a vertical you fixed by hand.",
+  "_generated_at": "2026-08-26",
+  "internal_projects": [
+    "Ad Stack",
+    "Admin",
+    "Agency",
+    "Agents",
+    "Core Platform",
+    "Data & Analytics",
+    "Growth",
+    "Infra & Others",
+    "Overall",
+    "Team Leaves"
+  ],
+  "merchants": [
+    {
+      "name": "Akiso",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand01",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Aurelia",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand02",
+      "vertical": "haircare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand03",
+      "vertical": "eyewear",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand04",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Bruno Milano",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand05",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand06",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand07",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand08",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand09",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Dr. Sheth's",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand10",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand11",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand12",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand13",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "planned"
+    },
+    {
+      "name": "Ghar Soaps",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "canceled"
+    },
+    {
+      "name": "ExampleBrand14",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand15",
+      "vertical": "home and consumer durables",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "canceled"
+    },
+    {
+      "name": "Innovist",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand16",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand17",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand18",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Lenskart",
+      "vertical": "eyewear",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "Lifelong",
+      "vertical": "home and consumer durables",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand19",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "M&S",
+      "vertical": "multi-category retail",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand20",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "MamaEarth",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand21",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "planned"
+    },
+    {
+      "name": "ExampleBrand22",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "backlog"
+    },
+    {
+      "name": "ExampleBrand23",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "planned"
+    },
+    {
+      "name": "Noise",
+      "vertical": "electronics and wearables",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand24",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand25",
+      "vertical": "home and consumer durables",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "canceled"
+    },
+    {
+      "name": "ExampleBrand26",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "backlog"
+    },
+    {
+      "name": "ExampleBrand27",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand28",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "backlog"
+    },
+    {
+      "name": "ExampleBrand29",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Salty Fashion",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand30",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand31",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand32",
+      "vertical": "commerce infrastructure",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand33",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand34",
+      "vertical": "wellness and supplements",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand35",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "Sudathi",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand36",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand37",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand38",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "W for woman",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": true,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand39",
+      "vertical": "beauty and skincare",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    },
+    {
+      "name": "ExampleBrand40",
+      "vertical": "apparel and fashion",
+      "vertical_source": "inferred",
+      "public": false,
+      "linear_state": "started"
+    }
+  ]
+}

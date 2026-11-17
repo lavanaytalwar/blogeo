@@ -1,0 +1,808 @@
+# blogEO — Acme content engine
+
+**Status:** built and running. Phases 0, 1, 2, 3 and 5 are in `main`; phase 4 (Discord) is not.
+**Date:** 2026-08-27 (rev. 5: the advisory review pass)
+**Scope:** generator only. The audit half of the original design is explicitly deferred, see §2.
+
+---
+
+## 1. What this is
+
+A blog generation engine for `www.example.com/blogs`, driven from a web dashboard. On
+demand it takes a **selection** of target keywords, measures the pages currently outranking
+us for them, drafts a post in Acme's voice against what that measurement showed, runs five
+deterministic quality gates, has a model read it for the nine things a gate cannot check, and
+renders the draft alongside both reports for review. Approval writes a
+markdown file for a human to paste into the CMS, and a Discord webhook announces it in `#seo`.
+
+It also runs a nightly Search Console sync, which keeps the blog-wide non-brand baseline
+accruing whether or not anything ships.
+
+**The agent never writes to the live site, and no longer models a post that has shipped.**
+Publishing is a human action taken outside this system: someone pastes the approved markdown
+into the CMS. `approved` is therefore terminal (§4.5).
+
+---
+
+## 2. Starting condition — why this differs from the system it's modelled on
+
+Measured from GSC on 2026-08-26:
+
+| Trailing 90 days | Impressions | Clicks |
+|---|---|---|
+| Branded queries | 9,754 | 468 |
+| Non-brand queries | 236 | **0** |
+
+| Full history (2025-06-03 to 2026-08-23) | Queries | Impressions | Clicks |
+|---|---|---|---|
+| All queries | 479 | 23,373 | 1,113 |
+| Non-brand | 181 | 998 | **0** |
+
+Across the whole 447 days there is **one** non-brand query at position 11 to 20 with 10 or
+more impressions, and 83 non-brand queries clear even a 2-impression bar. The top of the
+non-brand list is mostly noise (`unlimited design agency`, `#socialbutterfly`); two of the
+top twelve are genuinely Acme's category.
+
+- Non-brand clicks in 90 days: **zero**
+- Non-brand queries at position 5–20 with ≥10 impressions: **zero**
+- 14 posts live at `/blogs`; 12 produce negligible impressions
+- The one high-impression post (`/blogs/d2c-apparel-calendar-2026`, 1,511 imp / 5 clicks)
+  ranks for consumer retail-sale queries — `zudio upcoming sale 2026`, `dior sale 2026`,
+  `end of season sale date`. Wrong audience; those impressions are not an opportunity.
+- GSC history begins 2025-06-03 (~15 months). API ceiling is 16 months.
+
+Three consequences that shape everything below:
+
+1. **No audit component.** There is no CTR headroom, no page-two content to push, and no
+   regression to recover. An auditor would have nothing to rank. Revisit once non-brand
+   rankings exist.
+2. **GSC cannot drive topic selection.** Striking-distance discovery returns an empty set.
+   Topic selection runs on the curated keyword sheet and its SERP competitor data. The GSC
+   discovery path is written but dormant, and activates automatically once it returns rows.
+3. **GSC is a measurement system, not a discovery system** — for now.
+
+The upside: a baseline of literally zero non-brand clicks means any non-brand click this
+engine ever produces is unambiguously attributable to it.
+
+---
+
+## 3. Flow
+
+```text
+Generate <lead keyword> [+ same-cluster keywords]   (dashboard, on demand)
+        │
+        ├── selection ────────── keywords table ← keyword sheet
+        │                        one cluster for the whole selection
+        │                        cannibalization check ← posts + live sitemap
+        │                        cluster + persona mapping
+        │
+        ├── SERP reading ─────── top 6 organic results (search API, or URLs supplied)
+        │      (§4.2c)           fetch + measure each: words, H2s, date, schema,
+        │                        tables, questions, citations, intro length
+        │                        classify article | listing | product | other
+        │                        → word target = median of the WRITTEN pages
+        │                        cached in config/serp-analysis.json
+        │
+        ├── brief ────────────── assembleBrief: deterministic, no model
+        │                        cluster · persona · secondaries · claim ledger
+        │                        · namable customers · voice · SERP lesson
+        │
+        ├── draft ────────────── one model call. renderSystemPrompt(brief)
+        │                        prompt renders from lib/gates/rules.ts, so no
+        │                        gate can enforce a rule the writer was not told
+        │
+        ├── gates (deterministic, in code) ─── fail → redraft (max 2) → stop
+        │      1 strategy   2 structure   3 claim provenance
+        │      4 cannibalization          5 tone floor
+        │
+        └── dashboard review ────── [Approve] → markdown file + Discord ping in #seo
+                                    [Discard] → recorded, no file
+                                             │
+                        nightly cron ────────┴── GSC sync (blog-wide baseline)
+                                                  drain sweep (orphan recovery)
+```
+
+---
+
+## 4. Components
+
+### 4.1 Topic selection
+
+Sources, in priority order:
+
+| Source | Status | Notes |
+|---|---|---|
+| Manual request | active | dashboard: a lead keyword plus checkboxes for other untouched keywords in the same cluster (§4.2b) |
+| Curated keyword sheet | active | primary engine — see §5.1 |
+| GSC striking distance | **dormant** | code present; yields nothing today, self-activates when it returns rows |
+| Linear | **active** | capability seeds from internal projects; vertical signal from merchant projects. See §4.6 |
+
+Selection rejects a keyword when: an existing post already targets it (§4.3 gate 4), the
+keyword has no cluster/persona mapping, or it is on the entity-mismatch list.
+
+**Entity-mismatch list.** Two keywords in the sheet are unwinnable and must never be
+targeted: `acme recommendations` (SERP is a different entity) and `Acme AI` (SERP belongs
+to a different company at a different domain). `acme ecommerce` is contested by `competitor-example.com`,
+a different company on a near-identical domain — allowed but flagged.
+
+### 4.6 Keyword intelligence
+
+Topic selection is only as good as the target list, and the sheet holds 24 usable
+keywords — roughly three months of output. Resupply comes from three sources, in
+descending order of trust, run by a skill (§6).
+
+| Source | Yields | Trust |
+|---|---|---|
+| **Search Console** | striking-distance primaries; secondaries with real impressions | highest — the candidate carries its own evidence |
+| **Sheet expansion** | related terms from the top-5 SERP URLs tab 1 records per keyword | those pages rank; what they cover is evidence about the intent cluster |
+| **Linear** | capability seeds from internal projects; verticals from merchant projects | seeds only — never a keyword on its own |
+
+**What Search Console can actually supply.** Of 217 non-brand queries, roughly 15–20
+are genuinely minable and they cluster almost entirely around personalization. It can
+supply secondaries for three or four primaries. For the rest it holds nothing, because
+Acme does not rank in those spaces. The skill records `secondary_source: "none"`
+rather than padding to a count — inventing keywords is the same failure as inventing a
+metric.
+
+**Linear, split three ways.** The 64 projects divide into 10 internal (`Ad Stack`,
+`Core Platform`, `Agents`, `Data & Analytics`, `Growth`) and 54 merchants. Only ~13
+merchants are on the approved public list; the other ~41 — ExampleBrand37, ExampleBrand30, ExampleBrand20,
+ExampleBrand39, ExampleBrand36, ExampleBrand40, ExampleBrand02, ExampleBrand17 among them — are confidential.
+
+- Internal projects and their issues → capability seeds. No client name is present, so
+  nothing has to be stripped.
+- Merchant projects → a brand-to-vertical map in `config/merchants.json`. The name never
+  leaves that file; only the vertical does.
+- ENG issues → capability detail, after the project prefix is removed.
+
+**The extractor fails closed.** Because the merchant roster is known and complete, any
+token matching a project name is refused unless that exact name is on the approved
+public list. This is a deterministic check, not a judgment the model re-makes each run.
+
+**Never propose the same keyword twice.** Every keyword ever proposed, accepted,
+rejected, or excluded keeps a normalised fingerprint in `config/keyword-history.json`
+— lowercased, hyphens stripped, British/American spelling folded, singularised, tokens
+sorted. So `ecommerce personalization`, `e-commerce personalisation`, and
+`personalization for ecommerce` collapse to one entry. Rejected candidates carry their
+reason and never resurface.
+
+One distinction matters: those variants are blocked as separate **primaries** and
+allowed as **secondaries** of one primary. Folding without that distinction would throw
+away the exact terms the mining exists to collect.
+
+**Secondary keywords.** Every primary carries up to five, each with the evidence tier,
+source, and where applicable the impressions, average position and date window it came from.
+72 secondaries exist across 22 of the 24 usable primaries; 6 are GSC-backed, the rest come
+from SERP headings and the brand corpus. The evidence ladder is `gsc` → `serp` → `proposed`
+→ `none`, and it records why a term is on the list without gating on it. GSC impressions are
+**not** an admission test: with 998 non-brand impressions in 447 days, that test would reject
+every keyword worth writing about (§2).
+
+**Keyword budget.** The original brief said primary four to five times, secondaries four to
+five combined. Both numbers turned out to be arithmetic that correct writing could not
+satisfy, and both are now rates that scale with length. See §4.3 gate 2.
+
+### 4.2 Drafting
+
+Three units. The reference architecture called them skills; here two of the three are
+plain code, because nothing about them needs judgment.
+
+- **`lib/brief/assemble.ts`** — turns the selection into a complete spec: cluster, persona,
+  secondaries, keyword budget, every number the post may state, the customers it may name,
+  the voice rules, the SERP lesson, the word target. No model is involved. If the brief is
+  wrong it is wrong the same way every time, which is the only kind of wrong worth debugging.
+- **`lib/brief/render.ts`** — turns that spec into the system prompt. Voice from
+  `brand-voice.md`, claims from the ledger, terminology from `entity-record.md` §10.
+- **`lib/draft/pipeline.ts`** — one model call, then parse. Contains no writing rules.
+
+**`lib/gates/rules.ts` is the anti-drift mechanism.** Every mechanically-enforced rule is
+stated once in one table. The gates take their rule ids from it and the prompt is rendered
+from it, so a rule cannot exist in a gate without the writer being told about it. Five real
+generations failed on rules the prompt never mentioned, `keyword.h1` among them, which is
+drift rather than a model problem. Two tests assert the two cannot diverge.
+
+The writing surface itself is a skill, `.claude/skills/write-blog`, whose entire interface
+is two lines: the keywords, and optionally one line of angle.
+
+### 4.2b One post, several targets
+
+A post is generated for a **selection** of keywords, not a single one. The
+dashboard offers a lead keyword and then checkboxes for the other untouched
+keywords in the same cluster.
+
+- The **lead** owns the slug, title, H1, meta description and first 100 words.
+- Every **additional** target is enforced exactly like the lead everywhere else:
+  its own H2, at least three uses, and its secondary keywords required.
+- The length floor rises 1,500 characters per additional target, and the combined
+  secondary budget rises with it.
+- The selection is stored in `posts.additional_keywords` and re-validated
+  against `config/` on every gate run, so a re-ingest can never silently change
+  what a published post claimed.
+- The selection is a fact about the **request**. The pipeline overwrites
+  whatever the model echoed in the front matter before gating, so the model has
+  no vote in what it is judged against.
+
+Everything outside the selection stays foreign: `keyword.foreign` allows one
+passing mention and no more. This is what stops two posts chasing one query.
+
+### 4.2c Reading the SERP before writing
+
+Before a draft, the pages currently ranking for the keyword are fetched and
+**measured**: word count, H2 count, publish or modified date, schema types,
+lists, tables, question-shaped headings, outbound citations, and words before
+the first H2. Each page is classified article / listing / product / other, and
+the lesson is computed over the written pages only, so an app-store listing
+cannot drag the median.
+
+No model reads those pages. A model asked "why does this rank" produces a
+confident essay, which is what the gates exist to reject. Shape is countable.
+
+Two things come out of it:
+
+- **The word target tracks the measured median** when there is a real sample behind it,
+  replacing the flat 700 to 1,200 default. Guidance in the prompt and nothing more: no
+  draft is failed for missing it.
+- **Three readable articles minimum.** A median over one page is that page. Across the 24
+  usable keywords, 11 top-sixes contain fewer than three readable articles, because SERPs
+  for commercial terms are mostly store listings, product pages and social. Those keywords
+  state the default and say why, rather than inventing a target from a sample of one.
+  `Ad creative ai` returns zero readable articles, which is itself a finding: a blog post
+  may be the wrong asset for that keyword.
+- **A homepage is a product page**, whatever its word count. `adcreative.ai`'s front page
+  reads as 4,616 words of feature marketing and was briefly the only "article" found for
+  its keyword.
+- **Chrome is stripped before counting.** `<article>`, then `<main>`, then the document,
+  minus asides, headers, forms and anything whose class or id names it as navigation,
+  related posts, share bars or newsletter blocks. Worth 15 to 20% on a typical marketing
+  post, and the first pass without it put 14 of 24 keywords on the 2,400 cap, which is a
+  measurement telling you nothing.
+- **Anything scraped goes through `undash` on the way into the prompt.** Competitor H2s are
+  full of em dashes, and the prompt bans them outright.
+- **The observations go into the prompt verbatim**, under an instruction not to copy
+  the shape.
+
+**The enforced length floor does not depend on the SERP.** A revision of this document
+argued the opposite, on the grounds that `config/serp-analysis.json` is a committed file
+like `keywords.json` and therefore deterministic. That is true and it was not the whole
+objection. A gate is the fixed standard a draft is held to. Once its threshold is a
+function of whichever six pages ranked the last time someone ran a script, two drafts of
+identical quality get different verdicts because a measurement was or was not refreshed.
+The floor is flat: 3,000 characters of prose, plus 1,500 per additional target.
+
+Nothing in `lib/gates` imports from `lib/serp`, and a test asserts it. The independence is
+structural rather than a convention, so a gate cannot come to depend on the SERP again by
+accident.
+
+**Why characters rather than words.** A word count depends on how you split it, and a draft
+can pad its way to a word target with short filler while saying less. Characters are counted
+the same way on their pages and on ours. 3,000 is roughly the 500 words this floor has
+always been.
+
+Search is pluggable, `APIFY_TOKEN`, `BRAVE_SEARCH_KEY` or `SERPER_API_KEY`, checked in that
+order, and this codebase never scrapes an engine's results page itself. Not out of
+squeamishness: Google blocks datacenter IP ranges, which is exactly what Vercel serverless
+egress is, so a direct scrape would fail on roughly the first request and break again
+whenever the markup changed. All three providers exist because they run the proxy
+infrastructure that makes it work.
+
+Note the division of labour. The provider answers one question, *which six URLs rank*, and
+nothing else. Fetching those pages is a plain `fetch()` in `lib/serp/analyze.ts` with no key
+involved, and reading them is arithmetic. A model may legitimately choose the URLs, because
+what happens to them afterwards is deterministic; a model may not decide why they rank.
+
+With no key the URLs are passed on the command line and the cache records
+`source: supplied`, so a hand-fed or sheet-derived reading is never mistaken for a live one.
+Cached in `config/serp-analysis.json` with the date taken.
+
+### 4.3 The five gates
+
+All five are **deterministic code**, not model judgment. This is deliberate: it means
+swapping the drafting model changes output quality but can never change what passes.
+
+**Gate 1 — Strategy**
+- every selected keyword resolves to an approved keyword record
+- all selected keywords share one cluster (`cluster.targets_agree`) — the persona,
+  the commercial URL and the audience guard all hang off the cluster, so a
+  cross-cluster selection has no single correct answer and must be split
+- cluster and persona both mapped
+- title and H1 each contain at least one required qualifier: `Shopify` · `D2C` ·
+  `ecommerce` · `personalization` (source: `entity-record.md` §1 disambiguation)
+- no blocked competitor in slug, title, or H1 (§5.3)
+
+**Gate 2 — Structure**
+- opens with a labelled TL;DR
+- slug is ASCII, lowercase, hyphen-separated, no periods, no encoded characters
+  *(three live posts violate this today — see §9)*
+- meta description present, 140–160 chars
+- exactly one CTA, drawn from the approved set in `offers.md` §8
+- at least one H2; lead keyword present in title, H1, meta, and first 100 words
+- each additional selected keyword has an H2 containing it and at least three uses
+  (`keyword.additional_unheaded`, `keyword.additional_underused`)
+- length in **characters of prose**: a flat floor of 3,000, plus 1,500 per additional
+  target. Deliberately independent of the SERP (§4.2c). The floor is carried on the
+  brief from the gate's own constant, so the number the writer is given and the number
+  the gate checks cannot drift apart. There is no ceiling: the only principled one was
+  a multiple of the SERP median
+- primary keyword used at least 3 times and at most one per 100 words, capped at 8.
+  Expressed in occurrences rather than word-share: standard keyword density,
+  (keyword words x uses) / total words, scores a five-word long-tail phrase at 4.5%
+  purely for being five words long
+- secondaries at most 2 per 100 words combined, and no single secondary more than
+  `words/200` (4 to 10) times (`keyword.secondary_repeated`). There used to be a flat
+  combined ceiling of 16, derived from 700 to 900-word drafts, which became the binding
+  constraint at every length above about 800 and stopped the rate cap from ever running.
+  A combined count cannot tell stuffing from length; one term repeated is what stuffing
+  actually looks like
+- majority of sentences under 15 words (`brand-voice.md` §9)
+
+**Gate 3 — Claim provenance**
+- every numeric claim must match a record in the claim ledger (§5.2)
+- any digit-bearing claim with no ledger match fails the draft
+- no customer name outside the approved public set
+- **any mention of price fails** until conflict #10 is reconciled (§8)
+- **no founder name** until conflicts #11 and #12 are resolved (§8)
+
+**Gate 4 — Cannibalization**
+- no selected keyword — lead or additional — already targeted by a post in `posts`
+- no keyword outside the selection used more than once (`keyword.foreign`)
+- slug unique against `posts` and against the live `/blogs` sitemap
+- if an existing post covers the topic, the run stops and reports which post
+
+**Gate 5 — Tone floor** *(Acme-specific; runs opposite to a normal safety check)*
+- **no em dash, en dash or double hyphen anywhere**, title and meta included
+  (`tone.em_dash`). Nothing is wrong with the mark; it is banned because almost
+  nobody types one and a page full of them is the loudest signal that a machine
+  wrote the copy. The system prompt is held to the same rule, with a test
+  asserting it, because a model shown forty dashes will write them.
+- **at least one informal break per six sentences** (`tone.too_polished`): a
+  sentence opening on a conjunction, a clipped fragment, a trailing ellipsis, or
+  an aside in parentheses. Prose where every sentence is correctly closed reads
+  like a template. This is informal punctuation, never introduced errors.
+- hedge blocklist fails the draft: `could help`, `may improve`, `might`,
+  `designed to potentially`, `some merchants`, `arguably`, `in some cases`
+  (source: `brand-voice.md` §6 bans hedges outright)
+- banned-phrase blocklist: `revolutionary`, `cutting-edge`, `seamless`,
+  `unlock the power of`, `in today's fast-paced`
+- at least one coined term used and defined in one clause (`entity-record.md` §10)
+- intro must open on an outcome or contrast, not a question
+- hard superlative ban: `guaranteed`, `#1`, `the only`, `proven to` — these are claims
+  about the world, not framing
+
+Storytelling is required by the prompt but not gated: one thread through the post, opening
+in a scene, namable customers as the characters. It is not mechanically checkable, and a
+gate that needs a model to judge it would be a model judging a model. It is read by the
+advisory pass in §4.3b, which cannot fail a draft.
+
+**Redraft policy:** two attempts on failure, then stop and report. No unbounded loops. The
+failing rule ids are passed forward in the note, because the writer responds far better to
+`tone.coined_term_undefined: define session velocity in the sentence you first use it` than
+to "make it better". If the same rule fails twice the problem is the prompt or the gate, not
+the model.
+
+### 4.3b The advisory review pass
+
+A model reads every gated draft and **cannot fail it**. The objection in §4.3 is about
+gates and it stands: a gate whose verdict comes from a model is a model judging a model.
+This is not a gate. `posts.status` is decided by `runGates` before the reviewer is called,
+and nothing the reviewer returns can change it.
+
+Enforced structurally rather than by convention. Nothing in `lib/gates` imports from
+`lib/review`, and a test asserts it, the same way the SERP independence in §4.2c is
+asserted. `ReviewNote` is deliberately not the gates' `Failure` type even though the two
+are shaped identically, because sharing the type is how the second would quietly become
+the first.
+
+**What it reads for.** Nine checks, and the table is defined by subtraction from
+`lib/gates/rules.ts`: anything a machine can decide is a rule there, and only what needs
+judgment is here. A test asserts no check id is also a rule id, because a check that
+duplicates a mechanical rule recreates the drift `rules.ts` exists to stop, in a place
+where nothing fails to catch it.
+
+| Check | What it asks |
+|---|---|
+| `story.thread` | one thread through the post, or nine sections that could be lifted into other posts |
+| `story.scene` | the opening is a situation with someone in it, not a definition dressed as one |
+| `story.characters` | the namable customers act, rather than appearing attached to numbers in a list |
+| `serp.lesson_applied` | covers what the ranking pages cover and says one thing none of them said |
+| `claim.earns_place` | each permitted number does work in an argument instead of sounding credible |
+| `coined.definition_lands` | gate 5 proves a coined term is defined in a clause; this asks whether the clause explains anything |
+| `argument.no_restatement` | no two sections make the same point twice. The real failure mode at the 1,700+ word targets SERP medians now produce |
+| `persona.fit` | written to the mapped persona and the number they own |
+| `cta.earned` | the one approved CTA follows from the argument just made |
+
+**Same anti-drift mechanism as the gates.** The nine live once in
+`lib/review/checks.ts`, and both prompts render from that object: the writer is told what
+a reviewer will read for, and the reviewer is asked about the same nine in the same words.
+Two tests assert both. The reviewer is **not** shown `rules.ts`, and a test asserts that
+too, so it cannot re-litigate mechanics it has never seen.
+
+**Where it runs.** After the gates, on every attempt, never before. Browserbase's
+equivalent runs its checklist before its code gates; copying that here would spend a
+review on prose that a structure failure is about to have rewritten. Running it after
+means a redraft that was happening anyway carries prose feedback for free: on a failing
+draft the findings are appended to the human's regenerate note, and on a passing one they
+render on the review screen for whoever decides.
+
+**Criticism has to be evidenced.** Model reviewers default to praise and, pushed for
+criticism, to confident invention. So a `weak` or `missing` verdict must quote at least
+ten characters of the draft, and the quote is checked against the body with whitespace
+collapsed and smart punctuation folded. A quote that is not in the draft discards the
+finding. An unsupported `ok` is just an `ok` and keeps its place. Every rule in the parser
+costs the reviewer a finding and none of them can cost the draft anything.
+
+A review reporting on fewer than five of the nine is recorded as `unavailable` rather than
+presented as a thin verdict, because a panel cannot tell a short review from a lenient one.
+
+**Failure isolation.** `reviewDraft` never throws. A provider error, a timeout, a keyword
+missing from `config/`, or unparseable output all store a `review_results` row with
+`status: 'unavailable'` and the reason. So "the reviewer found nothing" and "the reviewer
+did not run" are never the same thing on screen, and neither one touches the post.
+
+**What it is not.** Not a route to gating later. If one of the nine turns out to be
+mechanically decidable it belongs in `rules.ts` as a real gate, authored there, not
+promoted from here. And not a self-review step inside the writer: a model that just wrote
+the draft approves the draft, so it is a separate call that does not know it wrote it.
+
+Measured on one real draft, `glm-5.2` at temperature 0 reported all nine checks, quoted
+the body accurately on every one, and flagged seven. Two of the seven are things no gate
+in §4.3 could ever have caught: an opening that defines a metric instead of showing a
+merchant, and a CTA asking for a sales call two sentences after arguing the install takes
+two minutes and needs no developer.
+
+### 4.4 Interface — dashboard, with Discord as notifier
+
+**Why not a Discord bot.** Discord caps message content at 2,000 characters and embeds at
+4,096 in the description. A 1,200-word post is 7,000+ characters, so the artifact under
+review physically cannot render in a Discord message — approval would mean downloading a
+`.md`, reading it elsewhere, and coming back to click a button. On top of that, drafts are
+generated on demand rather than on a schedule, which removes the push-notification benefit
+that justifies a chat-first interface in the first place.
+
+**Dashboard** (Next.js on Vercel, same deployment):
+
+| View | Purpose |
+|---|---|
+| Generate | a lead keyword from `keywords`, checkboxes for other untouched keywords in the same cluster, persona; kicks off a draft via `after()` |
+| Draft | rendered post beside its gate report, failing rules highlighted inline |
+| Decision | Approve → records the decision and offers the markdown for download; Discard → recorded |
+| History | every post, status, gate outcomes, who decided and when |
+| Measurement | the blog-wide non-brand baseline, daily. Per-post readings are retired — see §4.5 |
+| Keywords | coverage map — which sheet keywords have a post, which are untouched; GSC mining button |
+
+**Discord** is a one-way channel webhook. No bot, no application, no signature verification,
+no 3-second interaction deadline, no follow-up token window. It posts one line when a draft
+is ready or approved:
+
+```
+Draft ready — "How to increase revenue per visitor" — 5/5 gates passed → <link>
+```
+
+**Long-running work.** Generation exceeds a serverless request, so `/api/generate` inserts
+the `posts` row and returns immediately, then continues the draft in `after()` inside the
+same invocation while the dashboard polls for status. A returning Vercel function is killed
+along with anything still running inside it, so work is never left in a dangling promise.
+A daily `drain` cron re-runs whatever that path dropped.
+
+**Auth.** Vercel deployment protection (confirmed Pro) — the whole deployment sits behind
+the Vercel team login, zero application code. Every decision records the actor, so per-user
+permissions later are a config change, not a migration.
+
+### 4.5 Measurement — blog-wide only
+
+Nightly cron pulls GSC into `gsc_snapshots` at site and page level, split branded vs
+non-brand by regex on the query. This half runs and is the half worth having early: a
+baseline can only be captured going forward, so it accrues whether or not anything ships.
+
+**Per-post readings are retired.** The design called for +7 / +14 / +28 / +56 day readings
+per published post, each beside a blog-wide control for the identical range. It was built,
+and it could never fire: the readings were gated on `posts.status = 'published'` and
+`published_at`, and nothing in the system ever wrote either. That was not an oversight to
+fix by writing them. The engine stops at an approved draft and a human pastes it into the
+CMS, so no row here carries a live URL or a go-live date, and a +7 window has nothing to
+count from.
+
+The tempting repair — treat `approved_at` as the publish date — was rejected. Approval and
+publication are separated by however long the paste takes, which is unbounded and unrecorded,
+and a window that starts on the wrong day produces a number that looks like measurement and
+is not one. Given a baseline of zero non-brand clicks, a wrong attribution is worse than an
+absent one.
+
+So the cron, its schedule and the per-post table are gone. What is deliberately kept: the
+`measurements` table, its window-label constraint, and `posts.published_at` /
+`published_url`. They hold nothing, dropping them is the one irreversible half of the
+change, and re-enabling readings once publication is recorded should be a code change rather
+than a migration. `lib/gsc/lag.ts` and its tests are kept for the same reason — holding a
+window until Search Console has reported through its last day is the part that was subtle,
+and three days of lag is noise across 56 days but nearly half the reading across 7.
+
+Given the zero baseline, headline metrics are leading indicators, not clicks:
+
+- count of non-brand queries with any impression (today: 69, mostly noise)
+- count of target keywords from the sheet with any ranking at all (today: ~0)
+- blog-wide non-brand click total (today: 0)
+
+Clicks are the goal; they are not the near-term signal. Expect 2–3 months before anything
+moves. A system judged on six-week click growth will look like it is failing while doing
+exactly the right thing.
+
+---
+
+## 5. Configuration — the files the gates read
+
+### 5.1 `config/keywords.json`
+Ingested from the Google Sheet (`1NSLIqpO2W4GmTK3ZxiEPTD0KNNbdN3iyljzeVFtpxEY`).
+
+- **tab "Sheet2"** → keyword, section outline, distribution target
+- **tab "Keyword Strategy"** → keyword, outline, top-5 SERP URLs, clean-room comparison
+  URLs. The SERP URLs are the input to coverage analysis: does our draft cover what the
+  ranking pages cover?
+
+Each record carries: `keyword`, `cluster_id`, `outline`, `serp_competitors[]`,
+`clean_room_top5[]`, `status`, `entity_risk`, `source`, `secondary_source`, and
+`secondary_keywords[]` (each with `keyword`, `source`, `evidence`, and where the term came
+from GSC, its `impressions`, `position` and date `window`).
+
+### 5.1b `config/serp-analysis.json` and `config/serp-headings.json`
+
+Written by `npm run serp:analyze` and `npm run serp:headings`. Cached rather than fetched per
+draft: six HTTP requests per generation would make every run slow and flaky, and a SERP moves
+in weeks rather than minutes.
+
+`serp-analysis.json` holds, per keyword, the date the reading was taken, its `source`
+(`search` | `supplied` | `sheet`), the per-page measurements, and the derived lesson. The
+`source` field exists so a sheet-derived or hand-fed reading is never silently mistaken for a
+live SERP. `serp-headings.json` holds the older, narrower extraction: H1 to H3 text only,
+used for the "what the ranking pages cover" section and as tier 2 of the evidence ladder.
+
+Neither is read by a gate. They shape the prompt; they never decide what passes.
+
+### 5.2 `config/claim-ledger.json`
+Generated from `entity-record.md` §5, which already states the rule: *"Use these numbers
+and only these numbers. Anything not listed here needs a source before it ships."*
+
+Ratified values (2026-08-26):
+
+| Claim | Value |
+|---|---|
+| Platform trio | 30% higher conversion · 18% higher AOV · 20% better retention |
+| Brands served | 100+ |
+| Revenue generated | ₹45 crore+ |
+| Akiso | +31% CVR, +17% AOV |
+| Sudathi | 25% CVR uplift · 5× CAC reduction · Meta ROAS 5×→10× |
+| W for Woman | +27% revenue per visit in 4 weeks |
+| Lifelong | CVR up to ~40% in the Valentine window (~0.5% → ~0.7%) |
+| Pulse | +27% funnel fix rates · ~80% less analyst investigation time |
+| Attribution | +20% ROAS in 30 days |
+| Mechanism | 40+ site-level signals · ~20 variables per visitor |
+| Onboarding | one-click Shopify · ~2-min script · personalization begins in 15 days |
+| Agentcy | 1,140,000+ creatives · 2,300+ brands · first pack <1–4 min |
+
+The impulse backend (`impulse-backend.example-builder.com`) becomes a second ledger source
+once its auth and endpoints are documented. It is not required for v1.
+
+### 5.3 `config/blocklist.json`
+Two tiers, because `brand-voice.md` §8 distinguishes them:
+
+- **Banned from slug/title/H1:** Nosto, Dynamic Yield, Rebuy, Unbxd, Algolia, Klevu,
+  Searchspring, Anchanto
+- **Approved contrast targets** (naming these is on-brand): GA4, Microsoft Clarity,
+  agencies, UGC shops. Never attack a named competitor's brand directly.
+
+Plus the phrase blocklists from Gate 5, and the unapproved-customer-name rule.
+
+### 5.4 `config/merchants.json`
+Generated from Linear projects. Every merchant, its vertical, and whether it is publicly
+namable. Doubles as the vertical lookup and the leak-prevention list — gate 3 checks
+customer names against it, so a confidential brand cannot reach a draft even if it
+enters by some other route.
+
+### 5.5 `config/keyword-history.json`
+The permanent seen-set described in §4.6. Committed, so the memory survives the database.
+
+### 5.6 `config/query-noise.json`
+Recurring junk from Search Console — other companies' brands (`unlimited design agency`,
+`vivid ai`, `xyrix pulse ai`) and shopper-intent queries. Appended to by each mining run
+so the next one starts from what previous runs already ruled out.
+
+### 5.7 `config/clusters.json`
+Not yet written. Derived from the Key Problem taxonomy in `offers.md` §9 — Conversion
+rates · AOV improvement · Marketing efficiency · AI product tagging — and the two working
+content engines identified in `customer-language.md` §6b: diagnostic/mechanism posts, and
+Indian festive/seasonal playbooks. Personas come from `customer-language.md` §1.
+
+**This file must be authored and approved before Gate 1 can pass anything.**
+
+---
+
+## 6. Data model — Neon Postgres
+
+```
+keywords          keyword, cluster, persona, outline, serp_competitors[], status, entity_risk
+clusters          name, description, personas[], example_titles[]
+claim_ledger      claim_key, value, source_ref, tier, ratified_at
+posts             slug, title, h1, meta_description,
+                  primary_keyword, additional_keywords[], cluster_id, persona_id,
+                  status, body_md, gate_report, model, attempt, created_at,
+                  approved_at, published_url, published_at   (last two: unwritten, §4.5)
+gate_results      post_id, gate, passed, failures[], run_index
+gsc_snapshots     date, dimension(site|page|query), key, clicks, impressions, ctr,
+                  position, is_branded
+measurements      post_id, window_label(publish|d7|d14|d28|d56), captured_at,
+                  post_clicks, post_impressions, post_position,
+                  blogwide_clicks, blogwide_impressions   (empty, kept — §4.5)
+review_results    post_id, run_index, status(reviewed|unavailable), model, notes, reason
+jobs              type, payload, status, attempts, started_at, finished_at, error
+decisions         post_id, actor, action, created_at
+```
+
+`posts.status`: `drafted → awaiting_approval → approved`, plus terminal `discarded` and
+`failed_gates`. `approved` is terminal too: publishing is manual and unrecorded, so
+`published` and `measured` were removed in `007_retire_published.sql` (§4.5). There is no
+`gated` status and never was — the gates decide between `awaiting_approval` and
+`failed_gates` in one write.
+
+`posts.additional_keywords` is a plain `text[]`, deliberately not a join table with a foreign
+key into `keywords`. The keyword list is versioned in `config/` and re-ingested from the
+sheet, and a foreign key would let a re-ingest fail or cascade against posts that are already
+published. The gates re-validate every target against `config/` on each run, which is the
+check that actually matters.
+
+---
+
+## 7. Repo & deployment
+
+```
+app/
+  page.tsx                             queue: what is awaiting a decision
+  generate/                            lead keyword + also-cover picker + persona
+  posts/ · posts/[id]/                 history, review screen, gate report
+  keywords/ · measurement/             coverage map, blog-wide non-brand baseline
+  api/generate/route.ts                creates the post row, drafts via after()
+  api/posts/[id]/decision/route.ts     approve | discard | regenerate
+  api/posts/[id]/markdown/route.ts     the approved post as a downloadable file
+  api/keywords/mine/route.ts           GSC mining from the dashboard
+  api/cron/gsc-sync · drain            nightly (drain: orphan recovery)
+lib/
+  brief/        assemble (deterministic spec) · render (system prompt) · serp (caches)
+  gates/        one pure function per gate + rules.ts, the single rule table
+  review/       checks.ts, the nine judgment checks, plus the advisory pass (§4.3b)
+  serp/         analyze (measure a ranking page) · search (pluggable provider)
+  draft/        pipeline (brief in, prose out) · source (seam) · run (post row)
+  llm/          provider abstraction: anthropic | ollama
+  gsc/          service-account JWT auth, search analytics client, mining
+  keywords/     fingerprinting and the permanent seen-set
+  linear/       merchant roster, fails closed on confidentiality
+  config/ data/ notify/ db/
+.claude/skills/
+  write-blog/   the two-line writing interface
+  gsc-keywords/ keyword mining procedure and evidence ladder
+config/         keywords · claim-ledger · blocklist · clusters · merchants ·
+                keyword-history · query-noise · serp-analysis · serp-headings
+content/drafts/ approved markdown output
+migrations/ · scripts/
+```
+
+The full command surface (ingest, mining, SERP reading, drafting, gating) is a table in
+`README.md` rather than duplicated here; this document describes what the pieces are for.
+
+- **Host:** Vercel. **DB:** Neon.
+- **Cron:** nightly GSC sync and a drain sweep. The measurement cron was removed with the
+  per-post readings (§4.5). No scheduled draft job — drafts are on demand. Hobby rejects any
+  sub-daily schedule, which is what set the drain cadence.
+- **Models:** GLM-5.2 on Ollama Cloud at `think: max`, behind `lib/llm`. Anthropic is a
+  config swap; prompts avoid provider-specific behaviour so the swap is real. Max reasoning
+  was measured rather than assumed: on the same question it produced 3,898 characters of
+  reasoning and 1,367 eval tokens against high's 2,170 and 747, and it flipped the one
+  keyword that had been failing a five-draft batch. The brief carries thirty-odd
+  simultaneous constraints, so roughly double the tokens is worth it.
+- **A keyless deployment produces obviously placeholder drafts** rather than failing every
+  generation: `getDraftSource()` returns the stub when no provider key is present, and never
+  silently falls back to it when one is.
+- **Secrets:** `.secrets/gsc.json` locally (gitignored), Vercel env vars in deployment.
+  The current GSC key was exposed in a chat transcript and should be rotated before
+  production.
+
+**Approval does not depend on the filesystem.** Vercel serverless is read-only outside
+`/tmp`, so a post approved in production has no file on disk to collect. The decision is
+recorded first, the local file write is best-effort inside a `try`, and the durable delivery
+path is `/api/posts/[id]/markdown`, which renders the markdown from the row. Filenames go out
+as RFC 5987: three live slugs contain curly apostrophes, and an HTTP header is a ByteString,
+so the naive form threw a 500 instead of returning a file.
+
+**Two things the Vercel build got wrong by default.** The project imported as framework
+`Other`, which skips the Next.js build entirely, so `vercel.json` pins `"framework": "nextjs"`
+rather than trusting detection. And `loadConfig()` reads `config/*.json` at runtime through a
+path built from an env var, which the file tracer cannot follow: the files were simply absent
+from the bundle and every screen touching the keyword list returned a 500. `next.config.ts`
+traces `./config/*.json` into `/**` rather than naming routes, because the loaders reach the
+gates from enough entry points that a per-route list would rot.
+
+**GSC connection is live and verified:** service account `blog-eo@decent-answer-506707-k3`,
+property `sc-domain:example.com`, permission `siteFullUser`.
+
+---
+
+## 8. Ratified decisions and remaining conflicts
+
+Resolved 2026-08-26 (from `entity-record.md` §6):
+
+| # | Decision |
+|---|---|
+| 1 | Brands served: **100+** |
+| 2 | Revenue: **₹45 crore+**, currency always explicit |
+| 3 | Akiso: **+31% CVR / +17% AOV** (the conservative figure, by explicit instruction) |
+| 4 | Sudathi: **case-study figures** |
+| 5 | Module naming: **current live names** — Merchandising, Pulse, Ad Stack — because they match clickable URLs |
+| 6 | Spelling: **-ize** |
+| 8 | ROAS window: **30 days** |
+| 13 | Founded: **2023** |
+
+Still open, and gated shut until resolved:
+
+| # | Conflict | Effect |
+|---|---|---|
+| 10 | ₹2,000/mo (site) vs $100/mo (Shopify App Store) | Gate 3 fails any draft mentioning price |
+| 11 | Shray Arora's title | Gate 3 fails any draft naming a founder |
+| 12 | Deepak Kapoor's status | as above |
+
+---
+
+## 9. Known live issues (not this system's job, but it will keep flagging them)
+
+- **Three slugs contain encoded curly apostrophes**, and one contains a period:
+  `/blogs/why-product-recommendations-don%E2%80%99t-convert`,
+  `/blogs/real-time-personalization-vs.-segmentation-what%E2%80%99s-the-difference`,
+  `/blogs/valentine%E2%80%99s-day-2026-...` — needs redirects.
+- **Duplicate content is live and measured.** Substack posts at `blog.example.com/p/*`
+  are indexed alongside their `www/blogs/*` twins and both draw impressions.
+- **Third and fourth blog surfaces** exist at `content.example.com` and
+  `www.example.com/blog-1`.
+- **Entity collision is costing traffic:** `acme ai` draws 1,334 impressions at
+  position 4.1 against a different company of the same name.
+- **The brand classifier still has at least one gap.** `heliam ai`, 40 impressions at
+  position 4.1, is classified non-brand. It is a misspelling of Acme and is inflating the
+  non-brand baseline that every published post will be measured against. Same class as the
+  `halium` / `aehlium` / `gallium` / `hai` misses already fixed; this one survived. Fixing it
+  means re-running `npm run gsc:reclassify`, which rewrites `is_branded` on stored rows and
+  moves the baseline down slightly.
+
+---
+
+## 10. Build order
+
+| Phase | Deliverable | State |
+|---|---|---|
+| 0 | Schema, config ingest (sheet → keywords, entity-record → ledger), GSC sync, blog-wide baseline | **done** |
+| 1 | Five gates as pure functions + unit tests | **done** |
+| 2 | Dashboard: generate · draft view · gate report · approve → markdown · history | **done** |
+| 3 | Draft pipeline and the `write-blog` skill | **done** |
+| 3.1 | Multi-keyword posts, SERP reading, the voice rules | **done** |
+| 3.2 | The advisory review pass: nine judgment checks, evidenced, non-gating (§4.3b) | **done** |
+| 5 | Keyword intelligence: GSC mining, Linear extraction, the skill, secondary keywords | **done** |
+| 4 | Discord webhook notifier | code done and no-ops safely without a URL; **needs `DISCORD_WEBHOOK_URL`** |
+| 6 | Auto-publish handler | **dropped** — publishing is manual, and nothing is stubbed for it |
+
+Phase 0 ran first and was the piece that would have been unrecoverable if deferred: the
+blog-wide baseline can only be captured going forward. Phase 5 overtook phase 4 because
+the target list, not the notifier, was what limited output.
+
+Phase 6 is not deferred, it is cut. The engine's contract now ends at an approved draft, and
+the per-post measurement that depended on a published state went with it (§4.5). Earlier
+revisions of this document claimed a publish handler existed as a stub; none ever did.
+
+**Still open beyond phase 4:**
+
+- **Rotate the GSC service-account key and the Linear API key.** Both were pasted into a
+  chat transcript.
+- **A search API key** (`BRAVE_SEARCH_KEY` or `SERPER_API_KEY`). Without one the SERP
+  reading works but cannot be automated, so the dashboard Generate button cannot take it.
+- **Three unresolved conflicts still block claims:** pricing (₹2,000 vs $100), Shray Arora's
+  title, Deepak Kapoor's status (§8).
+
+---
+
+## 11. Out of scope
+
+Auto-publishing · Medium/Reddit syndication · the blog-surface consolidation decision ·
+AEO citation tracking (no data source without SEMrush) · the audit/edit engine ·
+an About page · comparison pages.
